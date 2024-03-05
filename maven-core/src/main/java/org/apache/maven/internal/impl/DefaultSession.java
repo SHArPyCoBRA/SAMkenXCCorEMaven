@@ -20,25 +20,16 @@ package org.apache.maven.internal.impl;
 
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.NoSuchElementException;
-import java.util.Objects;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 import org.apache.maven.RepositoryUtils;
-import org.apache.maven.api.DependencyCoordinate;
-import org.apache.maven.api.LocalRepository;
-import org.apache.maven.api.Project;
-import org.apache.maven.api.RemoteRepository;
-import org.apache.maven.api.Service;
-import org.apache.maven.api.Session;
-import org.apache.maven.api.SessionData;
+import org.apache.maven.api.*;
 import org.apache.maven.api.annotations.Nonnull;
 import org.apache.maven.api.annotations.Nullable;
+import org.apache.maven.api.services.Lookup;
+import org.apache.maven.api.services.LookupException;
 import org.apache.maven.api.services.MavenException;
 import org.apache.maven.api.settings.Settings;
 import org.apache.maven.artifact.repository.ArtifactRepository;
@@ -48,12 +39,11 @@ import org.apache.maven.plugin.MojoExecution;
 import org.apache.maven.plugin.descriptor.MojoDescriptor;
 import org.apache.maven.plugin.descriptor.PluginDescriptor;
 import org.apache.maven.rtinfo.RuntimeInformation;
-import org.codehaus.plexus.PlexusContainer;
-import org.codehaus.plexus.component.repository.exception.ComponentLookupException;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
 
+import static org.apache.maven.internal.impl.Utils.map;
 import static org.apache.maven.internal.impl.Utils.nonNull;
 
 public class DefaultSession extends AbstractSession {
@@ -63,9 +53,9 @@ public class DefaultSession extends AbstractSession {
     private final RepositorySystem repositorySystem;
     private final List<RemoteRepository> repositories;
     private final MavenRepositorySystem mavenRepositorySystem;
-    private final PlexusContainer container;
+    private final Lookup lookup;
     private final RuntimeInformation runtimeInformation;
-    private final Map<Class<? extends Service>, Service> services = new HashMap<>();
+    private final Map<Class<? extends Service>, Service> services = new ConcurrentHashMap<>();
 
     @SuppressWarnings("checkstyle:ParameterNumber")
     public DefaultSession(
@@ -73,19 +63,18 @@ public class DefaultSession extends AbstractSession {
             @Nonnull RepositorySystem repositorySystem,
             @Nullable List<RemoteRepository> repositories,
             @Nonnull MavenRepositorySystem mavenRepositorySystem,
-            @Nonnull PlexusContainer container,
+            @Nonnull Lookup lookup,
             @Nonnull RuntimeInformation runtimeInformation) {
         this.mavenSession = nonNull(session);
         this.session = mavenSession.getRepositorySession();
         this.repositorySystem = nonNull(repositorySystem);
         this.repositories = repositories != null
                 ? repositories
-                : mavenSession.getRequest().getRemoteRepositories().stream()
-                        .map(RepositoryUtils::toRepo)
-                        .map(this::getRemoteRepository)
-                        .collect(Collectors.toList());
+                : map(
+                        mavenSession.getRequest().getRemoteRepositories(),
+                        r -> getRemoteRepository(RepositoryUtils.toRepo(r)));
         this.mavenRepositorySystem = mavenRepositorySystem;
-        this.container = container;
+        this.lookup = lookup;
         this.runtimeInformation = runtimeInformation;
     }
 
@@ -114,19 +103,31 @@ public class DefaultSession extends AbstractSession {
     @Nonnull
     @Override
     public Map<String, String> getUserProperties() {
-        return new PropertiesAsMap(mavenSession.getUserProperties());
+        return Collections.unmodifiableMap(new PropertiesAsMap(mavenSession.getUserProperties()));
     }
 
     @Nonnull
     @Override
     public Map<String, String> getSystemProperties() {
-        return new PropertiesAsMap(mavenSession.getSystemProperties());
+        return Collections.unmodifiableMap(new PropertiesAsMap(mavenSession.getSystemProperties()));
     }
 
     @Nonnull
     @Override
-    public String getMavenVersion() {
-        return runtimeInformation.getMavenVersion();
+    public Map<String, String> getEffectiveProperties(@Nullable Project project) {
+        HashMap<String, String> result = new HashMap<>(new PropertiesAsMap(mavenSession.getSystemProperties()));
+        if (project != null) {
+            result.putAll(
+                    new PropertiesAsMap(((DefaultProject) project).getProject().getProperties()));
+        }
+        result.putAll(new PropertiesAsMap(mavenSession.getUserProperties()));
+        return result;
+    }
+
+    @Nonnull
+    @Override
+    public Version getMavenVersion() {
+        return parseVersion(runtimeInformation.getMavenVersion());
     }
 
     @Override
@@ -161,11 +162,11 @@ public class DefaultSession extends AbstractSession {
     public Map<String, Object> getPluginContext(Project project) {
         nonNull(project, "project");
         try {
-            MojoExecution mojoExecution = container.lookup(MojoExecution.class);
+            MojoExecution mojoExecution = lookup.lookup(MojoExecution.class);
             MojoDescriptor mojoDescriptor = mojoExecution.getMojoDescriptor();
             PluginDescriptor pluginDescriptor = mojoDescriptor.getPluginDescriptor();
             return mavenSession.getPluginContext(pluginDescriptor, ((DefaultProject) project).getProject());
-        } catch (ComponentLookupException e) {
+        } catch (LookupException e) {
             throw new MavenException("The PluginContext is only available during a mojo execution", e);
         }
     }
@@ -176,25 +177,27 @@ public class DefaultSession extends AbstractSession {
         org.eclipse.aether.SessionData data = session.getData();
         return new SessionData() {
             @Override
-            public void set(@Nonnull Object key, @Nullable Object value) {
+            public <T> void set(@Nonnull Key<T> key, @Nullable T value) {
                 data.set(key, value);
             }
 
             @Override
-            public boolean set(@Nonnull Object key, @Nullable Object oldValue, @Nullable Object newValue) {
+            public <T> boolean replace(@Nonnull Key<T> key, @Nullable T oldValue, @Nullable T newValue) {
                 return data.set(key, oldValue, newValue);
             }
 
             @Nullable
             @Override
-            public Object get(@Nonnull Object key) {
-                return data.get(key);
+            @SuppressWarnings("unchecked")
+            public <T> T get(@Nonnull Key<T> key) {
+                return (T) data.get(key);
             }
 
             @Nullable
             @Override
-            public Object computeIfAbsent(@Nonnull Object key, @Nonnull Supplier<Object> supplier) {
-                return data.computeIfAbsent(key, supplier);
+            @SuppressWarnings("unchecked")
+            public <T> T computeIfAbsent(@Nonnull Key<T> key, @Nonnull Supplier<T> supplier) {
+                return (T) data.computeIfAbsent(key, (Supplier<Object>) supplier);
             }
         };
     }
@@ -213,17 +216,16 @@ public class DefaultSession extends AbstractSession {
 
         RepositorySystemSession repoSession =
                 new DefaultRepositorySystemSession(session).setLocalRepositoryManager(localRepositoryManager);
-        MavenSession newSession =
-                new MavenSession(() -> repoSession, mavenSession.getRequest(), mavenSession.getResult());
+        MavenSession newSession = new MavenSession(repoSession, mavenSession.getRequest(), mavenSession.getResult());
         return new DefaultSession(
-                newSession, repositorySystem, repositories, mavenRepositorySystem, container, runtimeInformation);
+                newSession, repositorySystem, repositories, mavenRepositorySystem, lookup, runtimeInformation);
     }
 
     @Nonnull
     @Override
     public Session withRemoteRepositories(@Nonnull List<RemoteRepository> repositories) {
         return new DefaultSession(
-                mavenSession, repositorySystem, repositories, mavenRepositorySystem, container, runtimeInformation);
+                mavenSession, repositorySystem, repositories, mavenRepositorySystem, lookup, runtimeInformation);
     }
 
     @Nonnull
@@ -239,8 +241,8 @@ public class DefaultSession extends AbstractSession {
 
     private Service lookup(Class<? extends Service> c) {
         try {
-            return container.lookup(c);
-        } catch (ComponentLookupException e) {
+            return lookup.lookup(c);
+        } catch (LookupException e) {
             NoSuchElementException nsee = new NoSuchElementException(c.getName());
             e.initCause(e);
             throw nsee;
@@ -280,11 +282,12 @@ public class DefaultSession extends AbstractSession {
         }
     }
 
-    public org.eclipse.aether.graph.Dependency toDependency(DependencyCoordinate dependency) {
+    public org.eclipse.aether.graph.Dependency toDependency(DependencyCoordinate dependency, boolean managed) {
+        org.eclipse.aether.graph.Dependency dep;
         if (dependency instanceof DefaultDependencyCoordinate) {
-            return ((DefaultDependencyCoordinate) dependency).getDependency();
+            dep = ((DefaultDependencyCoordinate) dependency).getDependency();
         } else {
-            return new org.eclipse.aether.graph.Dependency(
+            dep = new org.eclipse.aether.graph.Dependency(
                     new org.eclipse.aether.artifact.DefaultArtifact(
                             dependency.getGroupId(),
                             dependency.getArtifactId(),
@@ -294,5 +297,9 @@ public class DefaultSession extends AbstractSession {
                             null),
                     dependency.getScope().id());
         }
+        if (!managed && "".equals(dep.getScope())) {
+            dep = dep.setScope(DependencyScope.COMPILE.id());
+        }
+        return dep;
     }
 }

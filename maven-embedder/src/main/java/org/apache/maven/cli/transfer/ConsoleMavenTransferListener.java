@@ -24,6 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 
+import org.apache.maven.api.services.MessageBuilderFactory;
 import org.eclipse.aether.transfer.TransferCancelledException;
 import org.eclipse.aether.transfer.TransferEvent;
 import org.eclipse.aether.transfer.TransferResource;
@@ -41,27 +42,28 @@ public class ConsoleMavenTransferListener extends AbstractMavenTransferListener 
     private boolean printResourceNames;
     private int lastLength;
 
-    public ConsoleMavenTransferListener(PrintStream out, boolean printResourceNames) {
-        super(out);
+    public ConsoleMavenTransferListener(
+            MessageBuilderFactory messageBuilderFactory, PrintStream out, boolean printResourceNames) {
+        super(messageBuilderFactory, out);
         this.printResourceNames = printResourceNames;
     }
 
     @Override
-    public synchronized void transferInitiated(TransferEvent event) {
+    public void transferInitiated(TransferEvent event) {
         overridePreviousTransfer(event);
 
         super.transferInitiated(event);
     }
 
     @Override
-    public synchronized void transferCorrupted(TransferEvent event) throws TransferCancelledException {
+    public void transferCorrupted(TransferEvent event) throws TransferCancelledException {
         overridePreviousTransfer(event);
 
         super.transferCorrupted(event);
     }
 
     @Override
-    public synchronized void transferProgressed(TransferEvent event) throws TransferCancelledException {
+    public void transferProgressed(TransferEvent event) throws TransferCancelledException {
         TransferResource resource = event.getResource();
         transfers.put(resource, event.getTransferredBytes());
 
@@ -117,7 +119,7 @@ public class ConsoleMavenTransferListener extends AbstractMavenTransferListener 
     }
 
     @Override
-    public synchronized void transferSucceeded(TransferEvent event) {
+    public void transferSucceeded(TransferEvent event) {
         transfers.remove(event.getResource());
         overridePreviousTransfer(event);
 
@@ -125,7 +127,7 @@ public class ConsoleMavenTransferListener extends AbstractMavenTransferListener 
     }
 
     @Override
-    public synchronized void transferFailed(TransferEvent event) {
+    public void transferFailed(TransferEvent event) {
         transfers.remove(event.getResource());
         overridePreviousTransfer(event);
 

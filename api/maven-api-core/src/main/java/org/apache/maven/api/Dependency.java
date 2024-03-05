@@ -18,8 +18,16 @@
  */
 package org.apache.maven.api;
 
+import org.apache.maven.api.annotations.Experimental;
+import org.apache.maven.api.annotations.Immutable;
 import org.apache.maven.api.annotations.Nonnull;
 
+/**
+ *
+ * @since 4.0.0
+ */
+@Experimental
+@Immutable
 public interface Dependency extends Artifact {
 
     /**
@@ -31,7 +39,7 @@ public interface Dependency extends Artifact {
     Type getType();
 
     @Nonnull
-    Scope getScope();
+    DependencyScope getScope();
 
     boolean isOptional();
 
@@ -41,5 +49,6 @@ public interface Dependency extends Artifact {
      * @return a {@link DependencyCoordinate}
      */
     @Nonnull
+    @Override
     DependencyCoordinate toCoordinate();
 }

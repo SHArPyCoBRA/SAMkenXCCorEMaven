@@ -34,7 +34,8 @@ import org.apache.maven.execution.DefaultMavenExecutionRequest;
 import org.apache.maven.execution.DefaultMavenExecutionResult;
 import org.apache.maven.execution.MavenExecutionRequest;
 import org.apache.maven.execution.MavenSession;
-import org.apache.maven.internal.impl.DefaultSession;
+import org.apache.maven.internal.impl.DefaultLookup;
+import org.apache.maven.internal.impl.DefaultSessionFactory;
 import org.apache.maven.model.Build;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.Exclusion;
@@ -45,13 +46,12 @@ import org.apache.maven.model.RepositoryPolicy;
 import org.apache.maven.project.DefaultProjectBuildingRequest;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.ProjectBuildingRequest;
-import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
+import org.apache.maven.repository.internal.MavenSessionBuilderSupplier;
 import org.codehaus.plexus.PlexusContainer;
 import org.codehaus.plexus.testing.PlexusTest;
 import org.codehaus.plexus.util.FileUtils;
-import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
-import org.eclipse.aether.internal.impl.SimpleLocalRepositoryManagerFactory;
+import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.repository.LocalRepository;
 
 import static org.codehaus.plexus.testing.PlexusExtension.getBasedir;
@@ -64,7 +64,10 @@ public abstract class AbstractCoreMavenComponentTestCase {
     protected PlexusContainer container;
 
     @Inject
-    protected MavenRepositorySystem repositorySystem;
+    protected RepositorySystem repositorySystem;
+
+    @Inject
+    protected MavenRepositorySystem mavenRepositorySystem;
 
     @Inject
     protected org.apache.maven.project.ProjectBuilder projectBuilder;
@@ -146,20 +149,25 @@ public abstract class AbstractCoreMavenComponentTestCase {
 
         initRepoSession(configuration);
 
+        DefaultSessionFactory defaultSessionFactory =
+                new DefaultSessionFactory(mock(RepositorySystem.class), null, new DefaultLookup(container), null);
+
         MavenSession session = new MavenSession(
                 getContainer(), configuration.getRepositorySession(), request, new DefaultMavenExecutionResult());
         session.setProjects(projects);
         session.setAllProjects(session.getProjects());
-        session.setSession(new DefaultSession(session, mock(RepositorySystem.class), null, null, null, null));
+        session.setSession(defaultSessionFactory.getSession(session));
 
         return session;
     }
 
     protected void initRepoSession(ProjectBuildingRequest request) throws Exception {
         File localRepoDir = new File(request.getLocalRepository().getBasedir());
-        LocalRepository localRepo = new LocalRepository(localRepoDir);
-        DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
-        session.setLocalRepositoryManager(new SimpleLocalRepositoryManagerFactory().newInstance(session, localRepo));
+        LocalRepository localRepo = new LocalRepository(localRepoDir, "simple");
+        RepositorySystemSession session = new MavenSessionBuilderSupplier(repositorySystem)
+                .get()
+                .withLocalRepositories(localRepo)
+                .build();
         request.setRepositorySession(session);
     }
 
@@ -185,7 +193,7 @@ public abstract class AbstractCoreMavenComponentTestCase {
         repository.setReleases(policy);
         repository.setSnapshots(policy);
 
-        return Arrays.asList(repositorySystem.buildArtifactRepository(repository));
+        return Arrays.asList(mavenRepositorySystem.buildArtifactRepository(repository));
     }
 
     protected List<ArtifactRepository> getPluginArtifactRepositories() throws InvalidRepositoryException {
@@ -195,7 +203,7 @@ public abstract class AbstractCoreMavenComponentTestCase {
     protected ArtifactRepository getLocalRepository() throws InvalidRepositoryException {
         File repoDir = new File(getBasedir(), "target/local-repo").getAbsoluteFile();
 
-        return repositorySystem.createLocalRepository(repoDir);
+        return mavenRepositorySystem.createLocalRepository(repoDir);
     }
 
     protected class ProjectBuilder {

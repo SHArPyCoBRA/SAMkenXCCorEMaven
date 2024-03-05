@@ -18,60 +18,61 @@
  */
 package org.apache.maven.internal.impl;
 
-import javax.inject.Inject;
 import javax.inject.Named;
 import javax.inject.Singleton;
 
+import java.util.Collection;
 import java.util.List;
 
-import org.apache.maven.api.Node;
+import org.apache.maven.api.*;
 import org.apache.maven.api.annotations.Nonnull;
-import org.apache.maven.api.services.DependencyCollector;
-import org.apache.maven.api.services.DependencyCollectorException;
-import org.apache.maven.api.services.DependencyCollectorRequest;
-import org.apache.maven.api.services.DependencyCollectorResult;
+import org.apache.maven.api.services.*;
 import org.eclipse.aether.DefaultRepositorySystemSession;
-import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
-import org.eclipse.aether.artifact.Artifact;
 import org.eclipse.aether.collection.CollectRequest;
 import org.eclipse.aether.collection.CollectResult;
 import org.eclipse.aether.collection.DependencyCollectionException;
-import org.eclipse.aether.graph.Dependency;
 import org.eclipse.aether.util.graph.manager.DependencyManagerUtils;
 import org.eclipse.aether.util.graph.transformer.ConflictResolver;
 
-import static org.apache.maven.internal.impl.Utils.cast;
 import static org.apache.maven.internal.impl.Utils.nonNull;
 
 @Named
 @Singleton
 public class DefaultDependencyCollector implements DependencyCollector {
 
-    private final RepositorySystem repositorySystem;
-
-    @Inject
-    DefaultDependencyCollector(@Nonnull RepositorySystem repositorySystem) {
-        this.repositorySystem = repositorySystem;
-    }
-
     @Nonnull
     @Override
     public DependencyCollectorResult collect(@Nonnull DependencyCollectorRequest request)
             throws DependencyCollectorException, IllegalArgumentException {
-        nonNull(request, "request can not be null");
-        DefaultSession session =
-                cast(DefaultSession.class, request.getSession(), "request.session should be a " + DefaultSession.class);
+        nonNull(request, "request");
+        InternalSession session = InternalSession.from(request.getSession());
 
-        Artifact rootArtifact =
-                request.getRootArtifact().map(session::toArtifact).orElse(null);
-        Dependency root = request.getRoot().map(session::toDependency).orElse(null);
+        Artifact rootArtifact;
+        DependencyCoordinate root;
+        Collection<DependencyCoordinate> dependencies;
+        Collection<DependencyCoordinate> managedDependencies;
+        List<RemoteRepository> remoteRepositories;
+        if (request.getProject().isPresent()) {
+            Project project = request.getProject().get();
+            rootArtifact = project.getPomArtifact();
+            root = null;
+            dependencies = project.getDependencies();
+            managedDependencies = project.getManagedDependencies();
+            remoteRepositories = session.getService(ProjectManager.class).getRemoteProjectRepositories(project);
+        } else {
+            rootArtifact = request.getRootArtifact().orElse(null);
+            root = request.getRoot().orElse(null);
+            dependencies = request.getDependencies();
+            managedDependencies = request.getManagedDependencies();
+            remoteRepositories = session.getRemoteRepositories();
+        }
         CollectRequest collectRequest = new CollectRequest()
-                .setRootArtifact(rootArtifact)
-                .setRoot(root)
-                .setDependencies(session.toDependencies(request.getDependencies()))
-                .setManagedDependencies(session.toDependencies(request.getManagedDependencies()))
-                .setRepositories(session.toRepositories(session.getRemoteRepositories()));
+                .setRootArtifact(rootArtifact != null ? session.toArtifact(rootArtifact) : null)
+                .setRoot(root != null ? session.toDependency(root, false) : null)
+                .setDependencies(session.toDependencies(dependencies, false))
+                .setManagedDependencies(session.toDependencies(managedDependencies, true))
+                .setRepositories(session.toRepositories(remoteRepositories));
 
         RepositorySystemSession systemSession = session.getSession();
         if (request.getVerbose()) {
@@ -81,7 +82,8 @@ public class DefaultDependencyCollector implements DependencyCollector {
         }
 
         try {
-            final CollectResult result = repositorySystem.collectDependencies(systemSession, collectRequest);
+            final CollectResult result =
+                    session.getRepositorySystem().collectDependencies(systemSession, collectRequest);
             return new DependencyCollectorResult() {
                 @Override
                 public List<Exception> getExceptions() {

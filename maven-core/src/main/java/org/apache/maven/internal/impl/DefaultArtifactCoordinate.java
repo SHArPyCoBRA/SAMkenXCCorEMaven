@@ -21,7 +21,7 @@ package org.apache.maven.internal.impl;
 import java.util.Objects;
 
 import org.apache.maven.api.ArtifactCoordinate;
-import org.apache.maven.api.VersionRange;
+import org.apache.maven.api.VersionConstraint;
 import org.apache.maven.api.annotations.Nonnull;
 
 import static org.apache.maven.internal.impl.Utils.nonNull;
@@ -30,13 +30,13 @@ import static org.apache.maven.internal.impl.Utils.nonNull;
  * A wrapper class around a maven resolver artifact.
  */
 public class DefaultArtifactCoordinate implements ArtifactCoordinate {
-    private final @Nonnull AbstractSession session;
+    private final @Nonnull InternalSession session;
     private final @Nonnull org.eclipse.aether.artifact.Artifact coordinate;
 
     public DefaultArtifactCoordinate(
-            @Nonnull AbstractSession session, @Nonnull org.eclipse.aether.artifact.Artifact coordinate) {
-        this.session = nonNull(session, "session can not be null");
-        this.coordinate = nonNull(coordinate, "coordinate can not be null");
+            @Nonnull InternalSession session, @Nonnull org.eclipse.aether.artifact.Artifact coordinate) {
+        this.session = nonNull(session, "session");
+        this.coordinate = nonNull(coordinate, "coordinate");
     }
 
     public org.eclipse.aether.artifact.Artifact getCoordinate() {
@@ -57,8 +57,8 @@ public class DefaultArtifactCoordinate implements ArtifactCoordinate {
 
     @Nonnull
     @Override
-    public VersionRange getVersion() {
-        return session.parseVersionRange(coordinate.getVersion());
+    public VersionConstraint getVersion() {
+        return session.parseVersionConstraint(coordinate.getVersion());
     }
 
     @Override

@@ -20,24 +20,19 @@ package org.apache.maven.internal.impl;
 
 import java.util.Collection;
 
-import org.apache.maven.api.DependencyCoordinate;
-import org.apache.maven.api.Exclusion;
-import org.apache.maven.api.Scope;
-import org.apache.maven.api.Type;
-import org.apache.maven.api.VersionRange;
+import org.apache.maven.api.*;
 import org.apache.maven.api.annotations.Nonnull;
 import org.apache.maven.api.annotations.Nullable;
-import org.apache.maven.api.services.TypeRegistry;
 import org.eclipse.aether.artifact.ArtifactProperties;
 
 import static org.apache.maven.internal.impl.Utils.nonNull;
 
 public class DefaultDependencyCoordinate implements DependencyCoordinate {
-    private final AbstractSession session;
+    private final InternalSession session;
     private final org.eclipse.aether.graph.Dependency dependency;
 
     public DefaultDependencyCoordinate(
-            @Nonnull AbstractSession session, @Nonnull org.eclipse.aether.graph.Dependency dependency) {
+            @Nonnull InternalSession session, @Nonnull org.eclipse.aether.graph.Dependency dependency) {
         this.session = nonNull(session, "session");
         this.dependency = nonNull(dependency, "dependency");
     }
@@ -63,8 +58,8 @@ public class DefaultDependencyCoordinate implements DependencyCoordinate {
     }
 
     @Override
-    public VersionRange getVersion() {
-        return session.parseVersionRange(dependency.getArtifact().getVersion());
+    public VersionConstraint getVersion() {
+        return session.parseVersionConstraint(dependency.getArtifact().getVersion());
     }
 
     @Override
@@ -77,13 +72,13 @@ public class DefaultDependencyCoordinate implements DependencyCoordinate {
         String type = dependency
                 .getArtifact()
                 .getProperty(ArtifactProperties.TYPE, dependency.getArtifact().getExtension());
-        return session.getService(TypeRegistry.class).getType(type);
+        return session.requireType(type);
     }
 
     @Nonnull
     @Override
-    public Scope getScope() {
-        return Scope.get(dependency.getScope());
+    public DependencyScope getScope() {
+        return session.requireDependencyScope(dependency.getScope());
     }
 
     @Nullable

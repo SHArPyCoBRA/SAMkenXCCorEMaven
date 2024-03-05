@@ -24,16 +24,10 @@ import javax.inject.Singleton;
 import javax.xml.stream.XMLStreamException;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
+import org.apache.maven.api.plugin.descriptor.lifecycle.Execution;
+import org.apache.maven.api.plugin.descriptor.lifecycle.Phase;
 import org.apache.maven.api.xml.XmlNode;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.internal.xml.XmlNodeImpl;
@@ -55,8 +49,6 @@ import org.apache.maven.plugin.PluginResolutionException;
 import org.apache.maven.plugin.descriptor.MojoDescriptor;
 import org.apache.maven.plugin.descriptor.Parameter;
 import org.apache.maven.plugin.descriptor.PluginDescriptor;
-import org.apache.maven.plugin.lifecycle.Execution;
-import org.apache.maven.plugin.lifecycle.Phase;
 import org.apache.maven.plugin.prefix.NoPluginFoundForPrefixException;
 import org.apache.maven.plugin.version.PluginVersionResolutionException;
 import org.apache.maven.project.MavenProject;
@@ -114,13 +106,12 @@ public class DefaultLifecycleExecutionPlanCalculator implements LifecycleExecuti
         this.lifecyclePluginResolver = lifecyclePluginResolver;
         this.standardDelegate = null;
         this.delegates = null;
-        this.mojoExecutionConfigurators =
-                Collections.singletonMap("default", (MojoExecutionConfigurator) new DefaultMojoExecutionConfigurator());
+        this.mojoExecutionConfigurators = Collections.singletonMap("default", new DefaultMojoExecutionConfigurator());
     }
 
     @Override
     public MavenExecutionPlan calculateExecutionPlan(
-            MavenSession session, MavenProject project, List<Object> tasks, boolean setup)
+            MavenSession session, MavenProject project, List<Task> tasks, boolean setup)
             throws PluginNotFoundException, PluginResolutionException, LifecyclePhaseNotFoundException,
                     PluginDescriptorParsingException, MojoNotFoundException, InvalidPluginDescriptorException,
                     NoPluginFoundForPrefixException, LifecycleNotFoundException, PluginVersionResolutionException {
@@ -138,7 +129,7 @@ public class DefaultLifecycleExecutionPlanCalculator implements LifecycleExecuti
     }
 
     @Override
-    public MavenExecutionPlan calculateExecutionPlan(MavenSession session, MavenProject project, List<Object> tasks)
+    public MavenExecutionPlan calculateExecutionPlan(MavenSession session, MavenProject project, List<Task> tasks)
             throws PluginNotFoundException, PluginResolutionException, LifecyclePhaseNotFoundException,
                     PluginDescriptorParsingException, MojoNotFoundException, InvalidPluginDescriptorException,
                     NoPluginFoundForPrefixException, LifecycleNotFoundException, PluginVersionResolutionException {
@@ -207,15 +198,15 @@ public class DefaultLifecycleExecutionPlanCalculator implements LifecycleExecuti
         calculateForkedExecutions(mojoExecution, session, project, alreadyPlannedExecutions);
     }
 
-    public List<MojoExecution> calculateMojoExecutions(MavenSession session, MavenProject project, List<Object> tasks)
+    public List<MojoExecution> calculateMojoExecutions(MavenSession session, MavenProject project, List<Task> tasks)
             throws PluginNotFoundException, PluginResolutionException, PluginDescriptorParsingException,
                     MojoNotFoundException, NoPluginFoundForPrefixException, InvalidPluginDescriptorException,
                     PluginVersionResolutionException, LifecyclePhaseNotFoundException {
         final List<MojoExecution> mojoExecutions = new ArrayList<>();
 
-        for (Object task : tasks) {
+        for (Task task : tasks) {
             if (task instanceof GoalTask) {
-                String pluginGoal = ((GoalTask) task).pluginGoal;
+                String pluginGoal = task.getValue();
 
                 String executionId = "default-cli";
                 int executionIdx = pluginGoal.indexOf('@');
@@ -229,7 +220,7 @@ public class DefaultLifecycleExecutionPlanCalculator implements LifecycleExecuti
 
                 mojoExecutions.add(mojoExecution);
             } else if (task instanceof LifecycleTask) {
-                String lifecyclePhase = ((LifecycleTask) task).getLifecyclePhase();
+                String lifecyclePhase = task.getValue();
 
                 Map<String, List<MojoExecution>> phaseToMojoMapping =
                         calculateLifecycleMappings(session, project, lifecyclePhase);
@@ -340,7 +331,11 @@ public class DefaultLifecycleExecutionPlanCalculator implements LifecycleExecuti
     }
 
     private XmlNode getMojoConfiguration(MojoDescriptor mojoDescriptor) {
-        return MojoDescriptorCreator.convert(mojoDescriptor).getDom();
+        if (mojoDescriptor.isV4Api()) {
+            return MojoDescriptorCreator.convert(mojoDescriptor.getMojoDescriptorV4());
+        } else {
+            return MojoDescriptorCreator.convert(mojoDescriptor).getDom();
+        }
     }
 
     @Override
@@ -459,7 +454,7 @@ public class DefaultLifecycleExecutionPlanCalculator implements LifecycleExecuti
             return;
         }
 
-        org.apache.maven.plugin.lifecycle.Lifecycle lifecycleOverlay;
+        org.apache.maven.api.plugin.descriptor.lifecycle.Lifecycle lifecycleOverlay;
 
         try {
             lifecycleOverlay = pluginDescriptor.getLifecycleMapping(forkedLifecycle);
@@ -491,7 +486,7 @@ public class DefaultLifecycleExecutionPlanCalculator implements LifecycleExecuti
                         MojoExecution forkedExecution =
                                 new MojoExecution(forkedMojoDescriptor, mojoExecution.getExecutionId());
 
-                        XmlNodeImpl forkedConfiguration = (XmlNodeImpl) execution.getConfiguration();
+                        XmlNode forkedConfiguration = execution.getConfiguration();
 
                         forkedExecution.setConfiguration(forkedConfiguration);
 
@@ -501,7 +496,7 @@ public class DefaultLifecycleExecutionPlanCalculator implements LifecycleExecuti
                     }
                 }
 
-                XmlNodeImpl phaseConfiguration = (XmlNodeImpl) phase.getConfiguration();
+                XmlNode phaseConfiguration = phase.getConfiguration();
 
                 if (phaseConfiguration != null) {
                     for (MojoExecution forkedExecution : forkedExecutions) {

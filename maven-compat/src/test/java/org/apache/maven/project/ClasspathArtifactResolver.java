@@ -31,6 +31,7 @@ import java.util.List;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.artifact.Artifact;
 import org.eclipse.aether.impl.ArtifactResolver;
+import org.eclipse.aether.repository.RemoteRepository;
 import org.eclipse.aether.resolution.ArtifactRequest;
 import org.eclipse.aether.resolution.ArtifactResolutionException;
 import org.eclipse.aether.resolution.ArtifactResult;
@@ -56,14 +57,14 @@ public class ClasspathArtifactResolver implements ArtifactResolver {
                 String scope = artifact.getArtifactId().substring("scope-".length());
 
                 try {
-                    artifact = artifact.setFile(ProjectClasspathTest.getFileForClasspathResource(
-                            ProjectClasspathTest.dir + "transitive-" + scope + "-dep.xml"));
+                    artifact = artifact.setFile(ProjectClasspathTestType.getFileForClasspathResource(
+                            ProjectClasspathTestType.dir + "transitive-" + scope + "-dep.xml"));
                     result.setArtifact(artifact);
                 } catch (FileNotFoundException | URISyntaxException e) {
                     throw new IllegalStateException("Missing test POM for " + artifact, e);
                 }
             } else {
-                result.addException(new ArtifactNotFoundException(artifact, null));
+                result.addException(new ArtifactNotFoundException(artifact, (RemoteRepository) null));
                 throw new ArtifactResolutionException(results);
             }
         }

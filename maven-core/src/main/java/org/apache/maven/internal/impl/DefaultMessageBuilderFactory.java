@@ -18,17 +18,15 @@
  */
 package org.apache.maven.internal.impl;
 
-import javax.annotation.Priority;
 import javax.inject.Inject;
 import javax.inject.Named;
 import javax.inject.Singleton;
-
-import java.util.Objects;
 
 import org.apache.maven.api.annotations.Experimental;
 import org.apache.maven.api.annotations.Nonnull;
 import org.apache.maven.api.services.MessageBuilder;
 import org.apache.maven.api.services.MessageBuilderFactory;
+import org.eclipse.sisu.Priority;
 
 @Experimental
 @Named
@@ -57,7 +55,7 @@ public class DefaultMessageBuilderFactory implements MessageBuilderFactory {
 
     @Override
     @Nonnull
-    public MessageBuilder builder(@Nonnull StringBuilder stringBuilder) {
-        return new DefaultMessageBuilder(Objects.requireNonNull(stringBuilder));
+    public MessageBuilder builder(int size) {
+        return new DefaultMessageBuilder(new StringBuilder(size));
     }
 }

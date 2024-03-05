@@ -35,7 +35,7 @@ public final class Features {
     /**
      * Name of the Maven user property to enable or disable the build/consumer POM feature.
      */
-    public static final String BUILDCONSUMER = "maven.experimental.buildconsumer";
+    public static final String BUILDCONSUMER = "maven.buildconsumer";
 
     private Features() {}
 

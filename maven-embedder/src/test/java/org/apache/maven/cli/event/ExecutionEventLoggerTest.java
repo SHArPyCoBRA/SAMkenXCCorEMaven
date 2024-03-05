@@ -22,10 +22,10 @@ import java.io.File;
 
 import com.google.common.collect.ImmutableList;
 import org.apache.commons.io.FilenameUtils;
-import org.apache.maven.cli.jansi.JansiMessageBuilderFactory;
-import org.apache.maven.cli.jansi.MessageUtils;
 import org.apache.maven.execution.ExecutionEvent;
 import org.apache.maven.execution.MavenSession;
+import org.apache.maven.jline.JLineMessageBuilderFactory;
+import org.apache.maven.jline.MessageUtils;
 import org.apache.maven.project.MavenProject;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -45,7 +45,7 @@ class ExecutionEventLoggerTest {
 
     private Logger logger;
     private ExecutionEventLogger executionEventLogger;
-    private JansiMessageBuilderFactory messageBuilderFactory = new JansiMessageBuilderFactory();
+    private JLineMessageBuilderFactory messageBuilderFactory = new JLineMessageBuilderFactory();
 
     @BeforeAll
     static void setUp() {

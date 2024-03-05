@@ -169,6 +169,24 @@ public class LifecycleDependencyResolver {
         }
     }
 
+    public DependencyResolutionResult getProjectDependencyResolutionResult(
+            MavenProject project,
+            Collection<String> scopesToCollect,
+            Collection<String> scopesToResolve,
+            MavenSession session,
+            boolean aggregating,
+            Set<Artifact> projectArtifacts)
+            throws LifecycleExecutionException {
+
+        Set<Artifact> resolvedArtifacts = resolveProjectArtifacts(
+                project, scopesToCollect, scopesToResolve, session, aggregating, projectArtifacts);
+        if (resolvedArtifacts instanceof ProjectArtifactsCache.ArtifactsSetWithResult) {
+            return ((ProjectArtifactsCache.ArtifactsSetWithResult) resolvedArtifacts).getResult();
+        } else {
+            throw new IllegalStateException();
+        }
+    }
+
     public Set<Artifact> resolveProjectArtifacts(
             MavenProject project,
             Collection<String> scopesToCollect,
@@ -177,27 +195,30 @@ public class LifecycleDependencyResolver {
             boolean aggregating,
             Set<Artifact> projectArtifacts)
             throws LifecycleExecutionException {
-        Set<Artifact> resolvedArtifacts;
         ProjectArtifactsCache.Key cacheKey = projectArtifactsCache.createKey(
                 project, scopesToCollect, scopesToResolve, aggregating, session.getRepositorySession());
+
         ProjectArtifactsCache.CacheRecord recordArtifacts;
         recordArtifacts = projectArtifactsCache.get(cacheKey);
-
-        if (recordArtifacts != null) {
-            resolvedArtifacts = recordArtifacts.getArtifacts();
-        } else {
-            try {
-                resolvedArtifacts = getDependencies(
-                        project, scopesToCollect, scopesToResolve, session, aggregating, projectArtifacts);
-                recordArtifacts = projectArtifactsCache.put(cacheKey, resolvedArtifacts);
-            } catch (LifecycleExecutionException e) {
-                projectArtifactsCache.put(cacheKey, e);
-                projectArtifactsCache.register(project, cacheKey, recordArtifacts);
-                throw e;
+        if (recordArtifacts == null) {
+            synchronized (cacheKey) {
+                recordArtifacts = projectArtifactsCache.get(cacheKey);
+                if (recordArtifacts == null) {
+                    try {
+                        Set<Artifact> resolvedArtifacts = getDependencies(
+                                project, scopesToCollect, scopesToResolve, session, aggregating, projectArtifacts);
+                        recordArtifacts = projectArtifactsCache.put(cacheKey, resolvedArtifacts);
+                    } catch (LifecycleExecutionException e) {
+                        projectArtifactsCache.put(cacheKey, e);
+                        projectArtifactsCache.register(project, cacheKey, recordArtifacts);
+                        throw e;
+                    }
+                }
             }
         }
         projectArtifactsCache.register(project, cacheKey, recordArtifacts);
-        return resolvedArtifacts;
+
+        return recordArtifacts.getArtifacts();
     }
 
     private Set<Artifact> getDependencies(
@@ -216,7 +237,7 @@ public class LifecycleDependencyResolver {
         }
 
         if (scopesToCollect.isEmpty() && scopesToResolve.isEmpty()) {
-            return new LinkedHashSet<>();
+            return new SetWithResolutionResult(null, new LinkedHashSet<>());
         }
 
         scopesToCollect = new HashSet<>(scopesToCollect);
@@ -270,7 +291,7 @@ public class LifecycleDependencyResolver {
                     Collections.singletonList(project.getArtifact().getId()),
                     collectionFilter);
         }
-        return artifacts;
+        return new SetWithResolutionResult(result, artifacts);
     }
 
     private boolean areAllDependenciesInReactor(
@@ -328,7 +349,7 @@ public class LifecycleDependencyResolver {
 
     private static class ReactorDependencyFilter implements DependencyFilter {
 
-        private Set<String> keys = new HashSet<>();
+        private final Set<String> keys = new HashSet<>();
 
         ReactorDependencyFilter(Collection<Artifact> artifacts) {
             for (Artifact artifact : artifacts) {

@@ -24,6 +24,7 @@ import org.apache.maven.api.Artifact;
 import org.apache.maven.api.ArtifactCoordinate;
 import org.apache.maven.api.Version;
 import org.apache.maven.api.annotations.Nonnull;
+import org.apache.maven.repository.internal.DefaultModelVersionParser;
 
 import static org.apache.maven.internal.impl.Utils.nonNull;
 
@@ -31,14 +32,14 @@ import static org.apache.maven.internal.impl.Utils.nonNull;
  * A wrapper class around a maven resolver artifact.
  */
 public class DefaultArtifact implements Artifact {
-    private final @Nonnull AbstractSession session;
+    private final @Nonnull InternalSession session;
     private final @Nonnull org.eclipse.aether.artifact.Artifact artifact;
-    private final String id;
+    private final String key;
 
-    public DefaultArtifact(@Nonnull AbstractSession session, @Nonnull org.eclipse.aether.artifact.Artifact artifact) {
-        this.session = nonNull(session, "session can not be null");
-        this.artifact = nonNull(artifact, "artifact can not be null");
-        this.id = getGroupId()
+    public DefaultArtifact(@Nonnull InternalSession session, @Nonnull org.eclipse.aether.artifact.Artifact artifact) {
+        this.session = nonNull(session, "session");
+        this.artifact = nonNull(artifact, "artifact");
+        this.key = getGroupId()
                 + ':'
                 + getArtifactId()
                 + ':'
@@ -54,7 +55,7 @@ public class DefaultArtifact implements Artifact {
 
     @Override
     public String key() {
-        return id;
+        return key;
     }
 
     @Nonnull
@@ -75,6 +76,11 @@ public class DefaultArtifact implements Artifact {
         return session.parseVersion(artifact.getVersion());
     }
 
+    @Override
+    public Version getBaseVersion() {
+        return session.parseVersion(artifact.getBaseVersion());
+    }
+
     @Nonnull
     @Override
     public String getExtension() {
@@ -89,7 +95,7 @@ public class DefaultArtifact implements Artifact {
 
     @Override
     public boolean isSnapshot() {
-        return DefaultVersionParser.checkSnapshot(artifact.getVersion());
+        return DefaultModelVersionParser.checkSnapshot(artifact.getVersion());
     }
 
     @Nonnull
@@ -100,12 +106,12 @@ public class DefaultArtifact implements Artifact {
 
     @Override
     public boolean equals(Object o) {
-        return o instanceof DefaultArtifact && Objects.equals(id, ((DefaultArtifact) o).id);
+        return o instanceof Artifact && Objects.equals(key(), ((Artifact) o).key());
     }
 
     @Override
     public int hashCode() {
-        return id.hashCode();
+        return key.hashCode();
     }
 
     @Override

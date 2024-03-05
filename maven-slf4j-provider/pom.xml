@@ -23,14 +23,14 @@ under the License.
   <parent>
     <groupId>org.apache.maven</groupId>
     <artifactId>maven</artifactId>
-    <version>4.0.0-alpha-9-SNAPSHOT</version>
+    <version>4.0.0-alpha-13-SNAPSHOT</version>
   </parent>
 
   <artifactId>maven-slf4j-provider</artifactId>
 
   <name>Maven SLF4J Simple Provider</name>
   <description>Maven SLF4J provider based on SLF4J's simple provider, extended to support Maven styled colors
-    for levels and stacktraces rendering.</description>
+    for levels and stacktrace rendering.</description>
 
   <dependencies>
     <dependency>
@@ -47,7 +47,7 @@ under the License.
     </dependency>
     <dependency>
       <groupId>org.apache.maven</groupId>
-      <artifactId>maven-embedder</artifactId>
+      <artifactId>maven-jline</artifactId>
     </dependency>
   </dependencies>
 
@@ -66,8 +66,7 @@ under the License.
               <classifier>sources</classifier>
               <overWrite>false</overWrite>
               <outputDirectory>${project.build.directory}/generated-sources/slf4j-simple</outputDirectory>
-              <includes>org/slf4j/impl/*.java</includes>
-              <excludes>org/slf4j/impl/StaticLoggerBinder*</excludes>
+              <includes>org/slf4j/simple/*.java</includes>
             </artifactItem>
           </artifactItems>
         </configuration>
